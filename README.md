@@ -11,7 +11,7 @@ APIs and immutable data structures within a Common Lisp environment, and to make
 Common Lisp more approachable to Clojure programmers. If you're a developer
 who regularly writes both Common Lisp and Clojure, this library is for you.
 
-This is _not_ a Clojure implementation. There is no `def, `defn`, `fn`,
+This is _not_ a Clojure implementation. There is no `def`, `defn`, `fn`,
 or Clojure-style destructuring. Similarly, there no
 Clojure-compatible LOOP/RECUR support, use CL:LOOP or other favored
 CL iteration mechanism. Real FP programmers don't LOOP anyway :-)
