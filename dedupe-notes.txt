@@ -1,0 +1,145 @@
+FWIW, curiousity on my part.  Nothing's optimized, the whole project is
+stilL a WIP.
+
+#| 
+Comparison of DEDUPE on a million number vector.
+(defparameter *nums* (make-array 1000000 :initial-element 0))
+(loop for i from 0 below 1000000 do (setf (svref *nums* i) (random 10)))
+
+Unoptimized code, default compiler settings.
+
+900265 numbers after deduping.  So we're doing a lot
+of seq traversals on the input coll, and of course it's lazy seq resulits.
+So we have lots of inefficincies, but they're constant, what changes is
+whether we used SEQUENCE, or the LOOP logic, on the lazy sequence dedupe.
+
+(loop repeat 3 do (time (count (dedupe *nums*))))
+
+WITHOUT USING SEQUENCE: (best of 3)
+Evaluation took:
+  0.158 seconds of real time
+  0.157995 seconds of total run time (0.147957 user, 0.010038 system)
+  [ Real times consist of 0.033 seconds GC time, and 0.125 seconds non-GC time. ]
+  [ Run times consist of 0.032 seconds GC time, and 0.126 seconds non-GC time. ]
+  100.00% CPU
+  363,673,300 processor cycles
+  147,226,608 bytes consed
+
+USING SEQUENCE: (best of 3)
+Evaluation took:
+  0.266 seconds of real time
+  0.265270 seconds of total run time (0.249244 user, 0.016026 system)
+  [ Real times consist of 0.095 seconds GC time, and 0.171 seconds non-GC time. ]
+  [ Run times consist of 0.095 seconds GC time, and 0.171 seconds non-GC time. ]
+  99.62% CPU
+  611,310,424 processor cycles
+  219,201,504 bytes consed
+
+Seems worth the more complex DEDUPE code to me.  SEQUENCE is not free.
+
+Now, for some MDEDUPE numbers.
+(loop repeat 3 do (time (count (mdedupe *nums*))))
+
+Option A, cons a list result, use SEQs to traverse coll (best of 3)
+Evaluation took:
+  0.053 seconds of real time
+  0.053049 seconds of total run time (0.052966 user, 0.000083 system)
+  100.00% CPU
+  121,753,824 processor cycles
+  60,807,952 bytes consed
+  
+No apparent GC time?
+
+Option B: cons a list, use iterator traversal instead of seq traversal
+Evaluation took:
+  0.039 seconds of real time
+  0.038456 seconds of total run time (0.030572 user, 0.007884 system)
+  97.44% CPU
+  88,302,620 processor cycles
+  28,821,888 bytes consed
+
+Option C. Return a adjustable vector same size as coll, use iterator
+Evaluation took:
+  0.029 seconds of real time
+  0.029394 seconds of total run time (0.029300 user, 0.000094 system)
+  100.00% CPU
+  67,413,280 processor cycles
+  8,000,016 bytes consed
+
+Basically allocaing duplicate coll space.  So there's our baseline.
+
+Option D. Destructively modify input vector, no iterator, returns deduped count
+(Unlikely to do this, it's a pain for caller unless we require fill pointer array)
+This test was done on a simple-array  copy without adjustable/fill-pointer,
+array copy not included in timing.  Not really suited for CLJ-COLL API
+was part of a test series.
+
+Evaluation took:
+  0.025 seconds of real time
+  0.025469 seconds of total run time (0.025370 user, 0.000099 system)
+  100.00% CPU
+  58,441,852 processor cycles
+  0 bytes consed
+|#
+
+#+(OR) ; was used for the above benchmarks Mar 2025.
+(defun mdedupe (coll)
+  "An eager of DEDUPE that returns a CL:LIST."
+  ;; Option A.  Cons a list, use seqs.
+  #+(OR)
+  (when-let (s1 (seq coll))
+    (let ((last (first s1)))
+      (serapeum:with-collector (result)
+        (result last)
+        (loop for s = (next s1) then (next s)
+              while s
+              as value = (first s)
+              unless (equal? last value)
+                do (result (setf last value))))))
+  ;; Option B. Cons a list, use iterator
+  #+NIL
+  (let* ((no-value #1=':no-value)
+         (iter (clj-coll::iterator coll no-value))
+         (last (funcall iter)))
+    (declare (function iter))
+    (unless (eq last no-value)
+      (serapeum:with-collector (result)
+        (result last)
+        (loop as value = (funcall iter)
+              until (eq value no-value)
+              unless (equal? last value)
+                do (result (setf last value))))))
+  ;; Option C. Return a adjustable vector same size as coll, use iterator
+  (let* ((no-value #1=':no-value)
+         (iter (clj-coll::iterator coll no-value))
+         (last (funcall iter)))
+    (declare (function iter))
+    (if (eq last no-value)
+        (cl-vector)                     ;empty vector
+        (let ((result (make-array (count coll) :adjustable t :fill-pointer 0)))
+          (vector-push last result)
+          (loop as value = (funcall iter)
+                until (eq value no-value)
+                unless (equal? last value)
+                  do (vector-push (setf last value) result))
+          result)))
+  ;; Option D. Destructively modify input vector, no iterator, returns deduped count
+  ;; Return number of deduped elements, not COLL.
+  ;; (defvar *copy* nil)
+  ;; (loop repeat 3 do (setf *copy* (make-array (cl:length *nums*) :initial-contents *nums*)) (time (mdedupe *copy*)))
+  ;; Not worth the savings and headaches for the caller.
+  #+NIL
+  (when (arrayp coll)
+    (let ((n (cl:length coll)))
+      (if (zerop n)
+          0
+          (loop with last = (aref coll 0)
+                with out = 0
+                for in from 1 below n
+                as value = (aref coll in)
+                unless (equal? last value)
+                  do (setf (aref coll (incf out)) value
+                           last value)
+                finally (return (1+ out))))))
+  )
+

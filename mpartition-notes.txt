@@ -1,0 +1,220 @@
+;; TL;DR: considering that the overhead of traversing the array and
+;; counting the result is present in all tests, the effort to minimize loop
+;; logic does pay dividents compared to using consing seqs, but the short
+;; mpartition using mtake and mdrop is a hell of a lot more readable and 
+;; a lot easier to write.
+
+;; Be sure to jump the results for `partitionv-all` for an interesting
+;; comparison using FSet's immutable vectors.
+
+On my linux intel laptop, SBCL 2.4.6, default or optimized-for-debugging
+settings, not even compiled for blastoff or anything close to it.
+
+(defparameter *nums* (into (cl-vector) (range 50000)))
+
+;; Using the long mpartition function with no mdrop/mtake/first/next
+;; (using iterators on coll), with a ringqueue that isn't terrific
+;; The winner... but geez what a pain to code.
+
+(time (loop repeat 100 do (count (mpartition 1000 990 *nums*))))
+Evaluation took:
+  0.103 seconds of real time
+  0.101910 seconds of total run time (0.101205 user, 0.000705 system)
+  [ Real times consist of 0.003 seconds GC time, and 0.100 seconds non-GC time. ]
+  [ Run times consist of 0.002 seconds GC time, and 0.100 seconds non-GC time. ]
+  99.03% CPU
+  235,323,358 processor cycles
+  80,930,192 bytes consed
+
+;; Using the short mpartition function that uses mtake and mdrop.
+(time (loop repeat 100 do (count (mpartition 1000 990 *nums*))))
+Evaluation took:
+  0.281 seconds of real time
+  0.280670 seconds of total run time (0.277506 user, 0.003164 system)
+  [ Real times consist of 0.012 seconds GC time, and 0.269 seconds non-GC time. ]
+  [ Run times consist of 0.010 seconds GC time, and 0.271 seconds non-GC time. ]
+  100.00% CPU
+  646,454,998 processor cycles
+  400,672,496 bytes consed
+  
+;; Using raw partition with clojure's algorithm
+CLJ-COLL-TEST> (time (loop repeat 100 do (count (partition 1000 990 *nums*))))
+Evaluation took:
+  0.847 seconds of real time
+  0.846409 seconds of total run time (0.798350 user, 0.048059 system)
+  [ Real times consist of 0.041 seconds GC time, and 0.806 seconds non-GC time. ]
+  [ Run times consist of 0.039 seconds GC time, and 0.808 seconds non-GC time. ]
+  99.88% CPU
+  1,951,304,252 processor cycles
+  967,652,848 bytes consed
+
+
+;; Now, how about with a realized lazyseq as input
+(defparameter *nums* (doall (range 50000)))
+
+;; Long mpartition with iterators
+(time (loop repeat 100 do (count (mpartition 1000 990 *nums*))))
+Evaluation took:
+  0.143 seconds of real time
+  0.143083 seconds of total run time (0.139183 user, 0.003900 system)
+  [ Real times consist of 0.007 seconds GC time, and 0.136 seconds non-GC time. ]
+  [ Run times consist of 0.006 seconds GC time, and 0.138 seconds non-GC time. ]
+  100.00% CPU
+  329,979,544 processor cycles
+  80,930,048 bytes consed
+  
+;; Short mpartition with first/next/mtake/mdrop
+(time (loop repeat 100 do (count (mpartition 1000 990 *nums*))))
+Evaluation took:
+  0.157 seconds of real time
+  0.156587 seconds of total run time (0.155423 user, 0.001164 system)
+  100.00% CPU
+  361,854,400 processor cycles
+  80,864,688 bytes consed
+
+;; Regular partition
+(time (loop repeat 100 do (count (partition 1000 990 *nums*))))
+Evaluation took:
+  0.693 seconds of real time
+  0.691728 seconds of total run time (0.655164 user, 0.036564 system)
+  [ Real times consist of 0.035 seconds GC time, and 0.658 seconds non-GC time. ]
+  [ Run times consist of 0.033 seconds GC time, and 0.659 seconds non-GC time. ]
+  99.86% CPU
+  1,595,772,122 processor cycles
+  647,611,408 bytes consed
+  
+;;;
+;;; STEP = 10, PARTITION = 1000, so much more step retraversal.  cl-vector input
+;;;
+
+(defparameter *nums* (into (cl-vector) (range 50000)))
+
+;; Long hyperoptimized mpartition.   OUCH!   Note that this yields 4901 partitions.
+(time (loop repeat 100 do (count (mpartition 1000 10 *nums*))))
+Evaluation took:
+  11.884 seconds of real time
+  11.863681 seconds of total run time (9.292227 user, 2.571454 system)
+  [ Real times consist of 5.577 seconds GC time, and 6.307 seconds non-GC time. ]
+  [ Run times consist of 5.560 seconds GC time, and 6.304 seconds non-GC time. ]
+  99.83% CPU
+  27,380,193,648 processor cycles
+  7,852,322,672 bytes consed
+
+;; Short mpartition with first/next/mtake/mdrop.  Also ouch.
+Evaluation took:
+  24.300 seconds of real time
+  24.270578 seconds of total run time (20.192819 user, 4.077759 system)
+  [ Real times consist of 7.665 seconds GC time, and 16.635 seconds non-GC time. ]
+  [ Run times consist of 7.632 seconds GC time, and 16.639 seconds non-GC time. ]
+  99.88% CPU
+  55,985,299,164 processor cycles
+  23,672,897,440 bytes consed
+
+;; Plain partition.  Blew out memory the first two times on a 2GB SBCL heap.
+;; Though it shouldn't have... if it can do it once (and it can) it should be able to
+;; do it N times so long as we're not retaining references to the results.
+;; Worked in a clean 4GB process.
+
+(time (loop repeat 100 do (count (partition 1000 10 *nums*))))
+Evaluation took:
+  139.502 seconds of real time
+  139.136722 seconds of total run time (122.730132 user, 16.406590 system)
+  [ Real times consist of 74.008 seconds GC time, and 65.494 seconds non-GC time. ]
+  [ Run times consist of 73.747 seconds GC time, and 65.390 seconds non-GC time. ]
+  99.74% CPU
+  321,411,764,974 processor cycles
+  78,706,340,080 bytes consed
+  
+Looking GC as time ratios doesn't tell us much, the fastest algorithm
+had middle-of-the-pack ratios.  
+    partition - 53% of time
+    short mpartition - 31.5% of time
+    long mpartition - 46% of time
+
+When you're going for the nasty work, the time spent on the
+long-form partition pays dividends.  It could be even faster if I did an
+inlined buffer that didn't wrap like ringbuffer does and if our collectors
+could use svref instead of aref.
+
+Here's the clojure version from a cider repl, which probably doesn't have
+JIT optimizations enabled:
+
+(def nums (into-array (range 50000)))
+(time (dotimes [i 100] (count (partition 1000 10 nums))))
+"Elapsed time: 64984.146608 msecs"
+Or ... try it on a realized lazy seq
+(def lazynums (doall (range 50000)))
+(time (dotimes [i 100] (count (partition 1000 10 lazynums))))
+"Elapsed time: 63375.897046 msecs"
+;; partition-all - no transducer
+(time (dotimes [i 100] (count (partition-all 1000 lazynums))))
+"Elapsed time: 452.119808 msecs"
+Or  .. the transducer, but without step since transducer doesn't do that
+And using partition-all ince partition doesn't have a transducer
+(time (dotimes [i 100] (count (into [] (partition-all 1000) lazynums))))
+"Elapsed time: 88.126588 msecs" - ooh, nice, but not apples to apples at all.
+
+vs clj-coll:
+(defparameter *lazynums* (doall (range 50000)))
+(time (dotimes (i 100) (count (into [] (partition-all 1000) *lazynums*))))
+Evaluation took:
+  1.831 seconds of real time
+  1.829913 seconds of total run time (1.787077 user, 0.042836 system)
+  [ Real times consist of 0.081 seconds GC time, and 1.750 seconds non-GC time. ]
+  [ Run times consist of 0.078 seconds GC time, and 1.752 seconds non-GC time. ]
+  99.95% CPU
+  4,218,472,617 processor cycles
+  2,441,284,496 bytes consed
+;; Same bad perf for clvector target
+(time (dotimes (i 100) (count (into (cl-vector) (partition-all 1000) *lazynums*))))
+Evaluation took:
+  1.807 seconds of real time
+  1.804217 seconds of total run time (1.757279 user, 0.046938 system)
+  [ Real times consist of 0.047 seconds GC time, and 1.760 seconds non-GC time. ]
+  [ Run times consist of 0.047 seconds GC time, and 1.758 seconds non-GC time. ]
+  99.83% CPU
+  4,161,415,311 processor cycles
+  2,440,768,048 bytes consed
+;; Seems to be just a matter of consing and gc here.  Haven't thought of
+what I'm doing stupidly.  Just wanted to grab some numbers before I moved on.
+  
+
+;;;
+;;; Oh yeah, let's compare an mpartition with cl vector partitions
+;;;
+
+;; Long mpartition, no seqs or mtake/mdrop.
+(time (loop repeat 100 do (count (mpartition 1000 990 *nums*))))
+Evaluation took:
+  0.124 seconds of real time
+  0.123488 seconds of total run time (0.098601 user, 0.024887 system)
+  [ Real times consist of 0.017 seconds GC time, and 0.107 seconds non-GC time. ]
+  [ Run times consist of 0.017 seconds GC time, and 0.107 seconds non-GC time. ]
+  99.19% CPU
+  284,994,026 processor cycles
+  80,874,656 bytes consed
+  
+;; Regular lazy `partition`
+CLJ-COLL-TEST> (time (loop repeat 100 do (count (partition 1000 990 *nums*))))
+Evaluation took:
+  0.759 seconds of real time
+  0.758791 seconds of total run time (0.737849 user, 0.020942 system)
+  [ Real times consist of 0.030 seconds GC time, and 0.729 seconds non-GC time. ]
+  [ Run times consist of 0.029 seconds GC time, and 0.730 seconds non-GC time. ]
+  100.00% CPU
+  1,748,568,088 processor cycles
+  967,622,032 bytes consed
+
+;; And the all new `partitionv` which produces persistent vector partitions
+(time (loop repeat 100 do (count (partitionv 1000 990 *nums*))))
+Evaluation took:
+  1.839 seconds of real time
+  1.838655 seconds of total run time (1.801535 user, 0.037120 system)
+  [ Real times consist of 0.061 seconds GC time, and 1.778 seconds non-GC time. ]
+  [ Run times consist of 0.062 seconds GC time, and 1.777 seconds non-GC time. ]
+  100.00% CPU
+  4,237,534,810 processor cycles
+  2,460,371,616 bytes consed
+
+Well isn't _that_ interesting. It reflects some cost of FSET:SEQ
+partitions, compared to the lazy sequences of `partition`.

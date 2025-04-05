@@ -1,0 +1,119 @@
+Some lazyseq notes. See seqs.lisp for the main overview.
+
+--- Clojure classes/interfaces ---
+
+interface Sequential             ;marker interface, no methods
+
+interface Seqable
+    ISeq seq();
+
+interface IPending
+    boolean isRealized();
+
+interface IPersistentCollection extends Seqable
+    int count();
+    IPersistentCollection cons(Object o);
+    IPersistentCollection empty();
+    boolean equiv(Object o);
+
+interface ISeq extends IPersistentCollection
+    Object first();
+    ISeq next();
+    ISeq more();
+    ISeq cons(Object o);
+
+abstract class ASeq extends Obj implements ISeq, Sequential, List, Serializable, IHashEq
+
+class Cons extends ASeq implements Serializable
+
+class LazySeq extends Obj implements ISeq, Sequential, List, IPending, IHashEq
+
+interface IPersistentList extends Sequential, IPersistentStack
+
+class EmptyList extends Obj implements IPersistentList, List, ISeq, Counted, IHashEq
+    Object first(); - null
+    ISeq next();    - null
+    ISeq more();    - this
+    PersistentList cons(Object o); -new list
+
+class PersistentList extends ASeq implements IPersistentList, IReduce, List, Counted 
+    Object first();
+    ISeq next();
+    PersistentList cons(Object o);
+
+public interface IPersistentStack extends IPersistentCollection
+    Object peek();
+    IPersistentStack pop();
+
+interface IPersistentVector extends Associative, Sequential, IPersistentStack, Reversible, Indexed
+    int length();
+    IPersistentVector assocN(int i, Object val);
+    IPersistentVector cons(Object o);
+
+abstract class APersistentVector extends AFn implements IPersistentVector,
+                                 Iterable, List, RandomAccess, Comparable, Serializable, IHashEq
+    ISeq seq();   -- inherited from Seqable, eventually via IPersistent{Stack,Collection}
+
+
+final class ChunkedSeq extends ASeq implements IChunkedSeq,Counted,IReduce,IDrop
+    Object first();
+    ISeq next() ;
+    ... lots more ...
+
+class PersistentVector extends APersistentVector implements IObj,
+                       IEditableCollection, IReduce, IKVReduce, IDrop
+    PersistentVector cons(Object val);
+    ISeq seq();
+
+
+--- Notes on CLojure LazySeq ---
+
+    private IFn fn; - the thunk returning a clojure cons or other seqable clojure entity
+    private Object sv; - value of the thunk. Seems like a wasted slot, not clear why they needed it.
+    private ISeq s; - (seq sv), or nil
+    private Lock lock;
+
+
+The ultimate goal of a Clojure-esque lazyseq is to resolve to a Seq or nil.
+
+--- Things to wrap your head around ---
+
+ASeq:      ISeq <- IPersistentCollection <- Sequable, Sequential
+ISeq cons(Object o){      ISeq more(){                    ISeq seq()
+return new Cons(o, this); ISeq s = next();                return this;              
+                          if(s == null)                          
+                            return PersistentList.EMPTY;       
+                          return s;                              
+
+LazySeq:   ISeq <- IPersistentCollection <- Sequable, Sequential
+Object first(){    ISeq next(){       ISeq seq(){
+seq();             seq();             if(lock != null)          
+if(s == null)      if(s == null)          realize();            
+    return null;       return null;   return s;             
+return s.first();  return s.next();	
+
+Cons:      ASeq <- ISeq <- IPersistentCollection <- Sequable, Sequential
+Object first(){    ISeq next(){          ISeq more(){                     
+return _first;     return more().seq();  ISeq s = next();                    
+                                         if(s == null)                    
+                                             return PersistentList.EMPTY; 
+                                         return s;                        
+
+PersistentList:    ASeq <- ISeq <- IPersistentCollection <- Sequable, Sequential
+PersistentList cons(Object o)    Object first(){    ISeq next(){     
+return new PersistentList(...)   return _first;     if(_count == 1)     
+                                                        return null;    
+                                                    return (ISeq) _rest;
+
+PersistentVector:  Sequential, Seqable (via IPersistentStack, IPersistentCollection) ** NOT ASEQ **
+PersistentVector cons(Object o)    ISeq seq()
+return new PersistentVector(...)   return chunkedSeq();
+
+RT:
+ISeq cons(Object x, Object coll){      Object first(Object x){          ISeq next(Object x){            ISeq more(Object x){              ISeq seq(Object coll){
+if(coll == null)                       if(x instanceof ISeq)            if(x instanceof ISeq)           if(x instanceof ISeq)             if(coll instanceof ASeq)          
+    return new PersistentList(x);          return ((ISeq) x).first();       return ((ISeq) x).next();       return ((ISeq) x).more();         return (ASeq) coll;           
+else if(coll instanceof ISeq)          ISeq seq = seq(x);               ISeq seq = seq(x);              ISeq seq = seq(x);                else if(coll instanceof LazySeq)  
+    return new Cons(x, (ISeq) coll);   if(seq == null)                  if(seq == null)                 if(seq == null)                       return ((LazySeq) coll).seq();
+else                                       return null;                     return null;                    return PersistentList.EMPTY;  else                              
+    return new Cons(x, seq(coll));     return seq.first();              return seq.next();              return seq.more();                    return seqFrom(coll);         
