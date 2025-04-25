@@ -1,6 +1,133 @@
 (in-package :clj-coll)
 
-;; More debugging crap, damn transducers
+(defun cl-symbol-names (&key exclude)
+  "This is an exported utility function for use in CLJ-COLL client DEFPACKAGE
+contexts. It returns a list of strings naming all symbols exported by the
+Common-Lisp package that are also shadowed by CLJ-COLL.
+
+You can use it a variety of ways, the most flexible of which is probably in
+the DEFPACKAGE form for some package that wants to use CLJ-COLL. E.g.
+
+    (defpackage my-package
+      (:use :cl :clj-coll)
+      (:shadowing-import-from :clj-coll . #.(clj-coll:cl-symbol-names))
+      ...)
+
+If EXCLUDE is specified, it should be a list of string designators
+indicating symbols that should NOT appear in the output of this function.
+E.g. 
+
+    (cl-symbol-names :exclude '(cons list list*))
+
+Would return the CL symbols shadowed by CLJ-COLL except for the ones
+listed as exclusions, so that the calling DEFPACKAGE or other
+package operation might favor CL or other providers of the symbols
+instead of CLJ-CON's versions of those symbols.
+
+SEE ALSO: NON-CL-SYMBOL-NAMES, CL-COMPATIBLE-SYMBOL-NAMES."
+  (loop with exclusions = (cl:mapcar #'string exclude)
+        for shadow in (package-shadowing-symbols :clj-coll)
+        as name = (string shadow)
+        unless (member name exclusions :test #'string=)
+          collect name))
+
+(defun non-cl-symbol-names (&key exclude)
+  "This is an exported utility function for use in CLJ-COLL client DEFPACKAGE
+contexts. It returns a list of strings naming all symbols exported by the
+CLJ-COLL package that NOT exported by the COMMON-LISP package (hence don't need
+to be shadowed if you want to use them in a package you're defining).
+
+This function is probably useful only if you're not going to 'USE'
+the CLJ-COLL package in some package you are creating.
+
+    (defpackage my-package
+      (:use :cl)
+      ;; symbol names that don't need to be shadowed
+      (:import-from :clj-coll . #.(clj-coll:non-cl-symbol-names))
+      ;; symbol names that conflict with CL symbols
+      (:shadowing-import-from :clj-coll . #.(clj-coll:cl-symbol-names))
+      ...)
+
+If EXCLUDE is specified, it should be a list of string designators
+indicating symbols that should NOT appear in the output of this function.
+E.g. 
+
+    (non-cl-symbol-names :exclude '(:non-cl-symbol-names :cl-symbol-names))
+
+Would return the CLJ-COLL symbols that don't shadow CL symbols except for the ones
+listed as exclusions.
+
+SEE ALSO: CL-SYMBOL-NAMES, CL-COMPATIBLE-SYMBOL-NAMES."
+  (loop with exclusions = (cl:union (cl:mapcar #'string exclude)
+                                    (cl-symbol-names)
+                                    :test #'string=)
+        for symbol being the external-symbol of :clj-coll
+        as name = (string symbol)
+        unless (member name exclusions :test #'string=)
+          collect name))
+
+(defparameter +m-function-symbol-names+ 
+  (cl:mapcar 
+   #'string
+   '(:mbutlast :mconcat :mcycle :mdedupe :mdistinct :mdrop :mdrop-last :mdrop-while
+     :mfilter :mflatten :minterleave :minterpose :mjuxt :mkeep :mkeep-indexed
+     :mkeys :mmap :mmapcat :mpartition :mpartition-all :mpartition-by
+     :mremove :mrandom-sample :mrange :mrepeat :mrepeatedly :mreplace :mreverse
+     :mshuffle :msplit-at :msplit-with :mtake :mtake-last :mtake-while :mvals))
+  "Symbol names of so-called 'M functions'. See README.md.
+Access with `CL-COMPATIBLE-SYMBOL-NAMES`.")
+
+(defparameter +cl-compatible-symbol-names+
+  (cl:mapcar
+   #'string
+   '(:any? :assoc-in :bounded-count :cl-conj :conj :contains? :count-while
+     :difference :disj :dissoc :distinct? :doseq :empty :empty? :every? 
+     :frequencies :get-in :group-by :index :index-of :join :map-invert
+     :merge-with :not-any? :not-empty :not-every? :last-index-of :peek
+     :postwalk :prewalk :postwalk-replace :prewalk-replace :project
+     :rand-nth :reduce-kv :rename :rename-keys :select :select-keys
+     :subset? :superset? :subvec :update :update-in :update-keys
+     :update-vals :walk
+
+     :coll? :collp :cons? :list? :map-entry? :map? :mapp :queue :queue?
+     :set? :string? :vector? :associative? :counted? :reversible? :seq?
+     :seqable? :sequential?
+
+     :cat :completing :deref :ensure-reduced :halt-when :unreduced
+     :reduced? :into :transduce
+    
+     :doall :dorun :lazy-cat :lazy-seq :nthnext :nthrest :realized? :seq :rseq))
+  "Symbol names of CLJ-COLL functions which return pure CL compatible data types,
+as opposed to types CL functions will not understand, like immutable collections.
+
+Access with `CL-COMPATIBLE-SYMBOL-NAMES`, typically in a `defpackage` form.
+See README.md.")
+
+(defun cl-compatible-symbol-names (&key exclude)
+  "This is an exported utility function for use in CLJ-COLL client DEFPACKAGE
+contexts. It returns a list of strings naming all symbols exported by the
+CLJ-COLL package that (a) do not shadow CL package symbols and (b) return only
+Common Lisp compatible data types (i.e. things that pure CL code would understand, 
+and not the CLJ-COLL immutable data structures).
+
+This function is probably useful of you want to import just the above subset of
+CLJ-CON symbols.  For example
+
+    (defpackage my-package
+      (:use :cl)
+      (:import-from :clj-coll . #.(clj-coll:cl-compatible-symbol-names))
+      ...)
+
+If EXCLUDE is specified, it should be a list of string designators
+indicating symbols that should NOT appear in the output of this function.
+E.g. `(cl-compatible-symbol-names :exclude '(:peek :pop :empty))`.
+
+SEE ALSO: CL-SYMBOL-NAMES, NON-CL-SYMBOL-NAMES."
+  (-> (cl:union +m-function-symbol-names+ +cl-compatible-symbol-names+
+                :test #'string=)
+      (cl:set-difference (mapcar #'string exclude) :test #'string=)))
+
+;; Probable temporary hacks to debug transducers, which proved difficult in SBCL.
 ;; TODO: make call-invocation-id correlated to the call-site-id ???
 ;; (HT, keyed by call site, valued by invocation-id).
 ;; Also make it thread safe.

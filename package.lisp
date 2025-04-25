@@ -38,6 +38,10 @@
  
   (:export
    ;; Miscellaneous
+   #:cl-symbol-names            ;to assist with your DEFPACKAGE (or related) activity
+   #:non-cl-symbol-names        ;to assist with your DEFPACKAGE (or related) activity
+   #:cl-compatible-symbol-names ;to assist with your DEFPACKAGE (or related) activity
+
    #:+immutable-map-type+
    #:+immutable-set-type+
    #:+immutable-vector-type+

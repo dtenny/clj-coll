@@ -218,67 +218,113 @@ individually or collectively enable CLojure reader syntax, e.g. `{:a 1 :b
     (named-readtables:in-readtable clj-coll:vector-readtable) ; For vector syntax only
     (named-readtables:in-readtable clj-coll:set-readtable)    ; For set syntax only
 
-By default the hash-table syntax reader will create immutable maps.  If you
+By default the hash-table syntax (`{}`) reader will create immutable maps.  If you
 would rather forego immutable data types and have the reader syntax create
-CL:HASH-TABLE objects, simply set or bind `*DEFAULT-HASHMAP-CONSTRUCTOR*` 
+CL:HASH-TABLE objects, simply set or bind `CLJ-COLL:*DEFAULT-HASHMAP-CONSTRUCTOR*` 
 to `CLJ-COLL:CL-HASH-MAP`.
+
+By default the vector syntax (`[]`) reader will create immutable vectors.
+If you want it to create mutable CL vectors, set or bind 
+`CLJ-COLL:*DEFAULT-VECTOR-CONSTRUCTOR*` to `CLJ-COLL:CL-VECTOR`.
+
+There is no equivalent for defaulting Clojure set syntax (`#{}`) such that
+it creates mutable CL data set representations. Set representations in
+'pure' CL are simply CL lists.
 
 See [Note on named-readtables and the REPL](#note-on-named-readtables-and-the-repl) 
 of you use your REPL from a terminal instead of via Slime.
 
 ## 3. Selective CLJ-COLL access
 
-TL;DR: This is doing it the hard way. See next section.
+V1.0.1: This has been made easier.
 
-CLJ-COLL shadows many common lisp symbols in order to provide clojure seq
-and lazyseq semantics for many of the APIs. If you want to take full
-advantage of it in the easiest way, refer to the next section. However you
-don't need to 'USE' all those shadowed symbols if you don't want to.
+There are three main subsets of the CLJ-COLL interfaces that provide useful
+functionality.
 
-Aside from simply using package qualified references,
-e.g. `(CLJ-COLL:FILTER pred coll)`, you may wish to `:import` just the "M
-Functions" and/or collection APIs that eschew the immutable and lazy
-behaviors in favor non-lazy result, not-mutable results.
+### Common Lisp functions that have been shadowed.
 
-The [M functions](#m-functions) can be imported as:
+CLJ-COLL functions that shadow CL namesakes, e.g. `cons`, `first`, and so on, that
+enable CLJ-COLL to traverse a _much_ wider selection of sequence types,
+including Common Lisp sequence types.  The trick here is that if your
+package definition "uses" the CL package, you'll need to do a
+`(shadowing-import-from :clj-coll ... list of symbols)`.
 
-    (defpackage my-package
-      ... <your stuff> ...
-      (import-from :clj-coll 
-        :mbutlast :mconcat :mcycle :mdedupe :mdistinct :mdrop :mdrop-last :mdrop-while
-        :mfilter :mflatten :minterleave :minterpose :mjuxt :mkeep :mkeep-indexed
-        :mkeys :mmap :mmapcat :mpartition :mpartition-all :mpartition-by
-        :mremove :mrandom-sample :mrange :mrepeat :mrepeatedly :mreplace :mreverse
-        :mshuffle :msplit-at :msplit-with :mtake :mtake-last :mtake-while :mvals))
+If you want these functions, in your package, you can now succinctly put
+this in your package definition as follows:
 
+    (defpackage :my-package
+      (:use :cl :clj-coll)
+      (:shadowing-import-from :clj-coll . #.(clj-coll:cl-symbol-names))
+      ...)
 
-There are a lot of functions in the Clojure API that do not always
-return immutable data types and do not shadow CL package symbols, including:
+There's no need for you to elaborate all the relevant symbols to shadow,
+using dotted lisp notation and read-time eval it's just one line. 
 
-    (import-from :clj-coll
-      :any? :assoc-in :bounded-count :cl-conj :conj :contains? :count :count-while
-      :difference :disj :dissoc :distinct? :doseq :empty :empty? :every? 
-      :frequencies :get-in :group-by :index :index-of :join :map-invert
-      :merge-with :not-any? :not-empty :not-every? :last-index-of :peek
-      :pop :postwalk :prewalk :postwalk-replace :prewalk-replace :project
-      :rand-nth :reduce-kv :rename :rename-keys :select :select-keys
-      :subset? :superset? :subvec :update :update-in :update-keys
-      :update-vals :walk
+In the above example, the remaining clj-coll symbols are inherited into
+MY-PACKAGE via the `:USE` directive.  You could also import selective
+symbols with the `defpackage` `:IMPORT-FROM`  directive (see next section)
 
-      :coll? :collp :cons? :list? :map-entry? :map? :mapp :queue :queue?
-      :set? :string? :vector? :associative? :counted? :reversible? :seq?
-      :seqable? :sequential?
+### CLJ-COLL functions that do not shadow CL functions
 
-      :cat :completing :deref :ensure-reduced :halt-when :unreduced
-      :reduced? into :transduce
-    
-      :doall :dorun :lazy-cat :lazy-seq :nthnext :nthrest :realized? :seq :rseq)
+If you want all the symbols in CLJ-COLL, you can perform `:USE` with the
+`:SHADOWING-IMPORT-FROM` as shown in the preceding section.
 
-However if you are using many of these you're very likely going to
-want to pull in all the symbols, including those that shadow CL symbols.
-For example, what is the point of importing CLJ-COLL:NEXT for seq traversal
-if you haven't imported CLJ-COLL:FIRST, which is pretty important to seq
-value access?
+However what if you want most but not all symbols?  For example, say you
+want all the CLJ-COLL symbols _except_ `cons`, `list`, and `list*`.  For
+this you can use the `CLJ-COLL:NON-CL-SYMBOL-NAMES` with the `:exclude`
+option. This lists all CLJ-COLL symbol names _that do not shadow CL
+symbols_ (minus optional exclusions) and you can import them as follows:
+
+    (defpackage :my-package
+      (:use :cl)
+      (:import-from :clj-coll . #.(clj-coll:non-cl-symbol-names 
+                                   :exclude '(:cons :list :list*)))
+      ...)
+
+Note that the `clj-coll:cl-symbol-names` that returns symbol names to be
+shadowed accepts an similar exclusion argument.
+
+### Import just the CL compatible functions in CLJ-COLL ("M functions" and more)
+
+Perhaps you'd like to use the subset of CLJ-COLL functions which will only
+return types (collections or otherwise) that pure Common Lisp can
+understand.  In this way you can take advantage of many features
+without entiering the realm of immutable data.
+
+This is partly what the "M functions" will do, as they always return CL
+collection types.  However there's a large number of Clojure "Collection
+APIs", like `walk`, `transduce`, and `select-keys` and so on, which return CL data
+types and not Clojure-style seqs or lazyseqs (assuming you feed them CL
+collections as inputs and not mutable collections).
+
+The subset of CLJ-COLL that functions are useful this way are named by the 
+`CLJ-COLL:CL-COMPATIBLE-SYMBOL-NAMES`, which returns all the M functions as
+well as compatible collection and other symbols. It does not return any CL
+package shadowing symbols, which, sadly, means it does not include `count`,
+`get`, `assoc`, and `dissoc`, you'll need to do shadowing-imports for those
+if you want the CLJ-COLL versions, or simply use the `CLJ-COLL:` package
+prefix to access them.
+
+Example usage:
+
+    (defpackage :my-package
+      (:use :cl)
+      (import-from :clj-coll . #.(clj-coll:cl-compatible-symbol-names))
+      ...)
+
+This function also provides an exclusion option if there are some of those
+symbols you don't want to import.
+
+Invoke `CLJ-COLL:CL-COMPATIBLE-SYMBOL-NAMES` or examine its source code
+for an exhaustive list of symbols returned.
+
+If you are using the readtable syntax assists for vectors and maps,
+you may wish to configure them to return mutable CL collections instead
+of immutable collections, as follows:
+
+    (setf clj-coll:*default-hashmap-constructor* #'clj-coll:cl-hash-map)
+    (setf clj-coll:*default-vector-constructor* #'clj-coll:cl-vector)
+
 
 ## 4. [Recommended] The Whole Enchilada
 
@@ -286,10 +332,11 @@ If you're a fairly frequent Clojure programmer, this is the recommended package
 setup for your package:
 
     (defpackage :my-package
+      ;; Use clj-coll and other optional goodies
       (:use :cl :clj-coll :clj-arrows)
-      (:shadowing-import-from :clj-coll 
-       :assoc :cons :count :first :get :merge :nth :last :list :listp
-       :reduce :rest :second :set :vector :vectorp))
+      ;; Let clj-coll shadow some CL symbols for maximum immutable data immersion.
+      ;; You can always call the CL stuff with a `CL:` prefix.
+      (:shadowing-import-from :clj-coll . #.clj-coll:cl-symbol-names))
 
     (in-package :my-package)
     (named-readtables:in-readtable clj-coll:readtable) ;all syntax read assists

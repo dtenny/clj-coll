@@ -2,6 +2,14 @@
 
 Aside from obvious things like EQUAL? semantics on map and set keys.
 
+## Eliminate ALEXANDRIA and SERAPEUM package dependencies
+
+The size of the these packages is not worth the use they get in CLJ-COLL,
+so at some point they may be removed as dependencies. This should not affect
+any CLJ-COLL users except for poorly formed ASDF system definitions.
+If your system relies on either of those packages, you should declare them
+as dependencies of your system.
+
 ## Unification of Clojure-in-CL libs
 
 I hope that with the advent of CLJ-COLL and my other libraries for Clojure

@@ -2,13 +2,36 @@
 
 (defpackage :clj-coll-test
   (:use :cl :clj-coll :clj-arrows :fiveam)
-  (:shadowing-import-from :fiveam :run!)
-  (:shadowing-import-from :clj-coll 
-   :assoc :butlast :cons :count :find :first :get #:intersection :map :merge :nth 
-   :last :list :list* :listp :pop :reduce :remove :replace :rest :reverse :second :sequence
-   :set :some :union :vector :vectorp)
+  (:shadowing-import-from :fiveam :run!) ;supersedes clj-coll:run!
+  (:shadowing-import-from :clj-coll . #.(clj-coll:cl-symbol-names))
   (:export :run-tests)
   (:documentation "Tests for the :clj-coll package."))
+
+;; Test CL-COMPATIBLE-SYMBOL-NAMES in a separate package 
+(defpackage :clj-coll-test1
+  (:use :cl :fiveam)
+  ;; Exclude run in favor of fiveam's, and mrange for am exclusion test
+  (:import-from :clj-coll . #.(clj-coll:cl-compatible-symbol-names 
+                               :exclude '(:run! :mrange))))
+
+(in-package :clj-coll-test1)
+
+(def-suite test-suite1 :description "Package/suite to test CL-COMPATIBLE-SYMBOL-NAMES")
+(in-suite test-suite1)
+(test symbol-names
+  (is (>= 118 (length (clj-coll:cl-compatible-symbol-names :exclude '(:run! :mrange)))))
+  (is (equal '(clj-coll:assoc-in :internal) (multiple-value-list (find-symbol "ASSOC-IN"))))
+  ;; MRANGE was excluded
+  (is (not (find-symbol "MRANGE")))
+  ;; RUN! will be from FIVEAM
+  (multiple-value-bind (sym kind)
+      (find-symbol "RUN!")
+    (is (eq 'fiveam:run! sym))
+    (is (eq :inherited kind)))
+  (multiple-value-bind (sym kind)
+      (find-symbol "ASSOC")
+    (is (eq 'cl:assoc sym))
+    (is (eq :inherited kind))))
 
 (in-package :clj-coll-test)
 
@@ -4916,4 +4939,5 @@ prewalk and postwalk, the returned stages will be reversed."
 (defun run-tests ()
   "Run all :clj-coll tests."
   ;; (debug! 'test-name) if you're debugging a particular broken test.
-  (explain! (run 'test-suite)))
+  (explain! (run 'test-suite))
+  (explain! (run 'clj-coll-test1::test-suite1)))

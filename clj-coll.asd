@@ -6,7 +6,7 @@
 (in-package #:clj-coll-asd)
 
 (defsystem :clj-coll
-  :version "1.0.0"
+  :version "1.0.1"
   :license "Eclipse 1.0"
   :author "Dave Tenny"
   :description "Clojure collection and sequence APIs for Common Lisp,
