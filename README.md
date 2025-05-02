@@ -60,7 +60,7 @@ some other tool, though frankly you may as well use [Clojure](https://clojure.or
 * [Lisp implementations tested](#tested-lisps)
 * [CLJ-COLL non-goals](#clj-coll-non-goals)
 * [Related projects and differences from CLJ-COLL](#related-projects-differences-from-clj-coll)
-* [Upward/future compatibility](#a-word-on-upward-future-compatibliity)
+* [Upward/future compatibility](#a-word-on-upwardfuture-compatibility)
 * [Frequently asked questions](#frequently-asked-questions)
 * [Additional reading - including deferred APIs](#additional-clj-coll-readingnotes)
 * [Feedback welcome](#feedback welcome)
