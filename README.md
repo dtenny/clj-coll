@@ -63,7 +63,7 @@ some other tool, though frankly you may as well use [Clojure](https://clojure.or
 * [Upward/future compatibility](#a-word-on-upwardfuture-compatibility)
 * [Frequently asked questions](#frequently-asked-questions)
 * [Additional reading - including deferred APIs](#additional-clj-coll-readingnotes)
-* [Feedback welcome](#feedback welcome)
+* [Feedback welcome](#feedback-welcome)
 
 ## Clojure APIs provided
 
