@@ -60,6 +60,7 @@ some other tool, though frankly you may as well use [Clojure](https://clojure.or
 * [Lisp implementations tested](#tested-lisps)
 * [CLJ-COLL non-goals](#clj-coll-non-goals)
 * [Related projects and differences from CLJ-COLL](#related-projects-differences-from-clj-coll)
+* [Upward/future compatibility](#a-word-on-upward-future-compatibliity)
 * [Frequently asked questions](#frequently-asked-questions)
 * [Additional reading - including deferred APIs](#additional-clj-coll-readingnotes)
 * [Feedback welcome](#feedback welcome)
@@ -1418,6 +1419,30 @@ Both of these are shooting for bigger goals than `CLJ-COLL`.
 Astute readers will wonder why the initial release of CLJ-COLL claims to
 have frequently asked questions.  It's because these are questions &
 answers for which the author had to remind himself repeatedly during the project.
+
+# A word on upward/future compatibility
+
+Careful though will be given to making sure changes to CLJ-COLL don't break
+your code that uses it.  However CLJ-COLL would like to reserve the
+following changes to the API for future use:
+
+* Any public API in Clojure may have a corresponding exported symbol added
+  to CLJ-COLL.
+* Any CLJ-COLL API that directly corresponds to a Clojure API may alter
+  behavior and become incompatible if it fixes a bug. I.e. if CLJ-COLL
+  accepts somehting that it shouldn't have (and that Clojure would reject),
+  CLJ-COLL may be fixed to be compatible with CLojure without flagging it
+  as a major release update.
+* Where there are potentially breaking changes, a note will appear in 
+  [Changelog.md](./Changelog.md).
+* Any API that has "mutable in, mutable out" semantics should expect that 
+  the API _may_, at its discretion, mutate the mutable inputs. Doc strings
+  attempt to detail the exact behavior in this regard, but there may be a
+  few misses in the this 4 week old release.
+
+In general your code should be future proof so long as it isn't defining
+other symbols that conflict with Clojure's API, and so long as it doesn't
+rely on broken behavior that gets fixed.
 
 # Additional CLJ-COLL reading/notes
 

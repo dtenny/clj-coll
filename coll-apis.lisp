@@ -1432,10 +1432,8 @@ See also: PARTITION-BY, GROUP-BY"
 (defun rename-keys (map key-map)
   "([map key-map])
 
-This implements clojure.set/rename-keys, because apparently it made sense to put
-map functions in the clojure.set namespace and that's not quirky at all.
-
-Returns MAP with the keys in KEY-MAP renamed to the vals in KEY-MAP.
+This implements clojure.set/rename-keys, which 
+returns MAP with the keys in KEY-MAP renamed to the vals in KEY-MAP.
 
 The renamed key will have the value of the old key. If the new key is already
 present in the map with some other value, it will have the value associated with
@@ -1443,11 +1441,13 @@ the key that was renamed. I.e. `(rename-keys {:a 1 :b 2} {:a :b}) => {:b 1}`
 
 Keys in KEY-MAP which are not in MAP are ignored.
 
-Keys should be a map, seqs of map-entries are apparently not supported in clojure.
+KEY-MAP should be a map, seqs of map-entries are apparently not supported in clojure.
 
 Mutable in, mutable out, if you pass a CL:HASH-TABLE as input, it is modified and returned.
 Note restricted CL:EQUAL key semantics for CL:HASH-TABLE and FSET:EQUAL? semantics
-for immutable maps."
+for immutable maps.
+
+See also RENAME, whih has similar effects on multiple maps in a 'rel'(-ation)."
   (if (cl:hash-table-p map)
       ;; Need old values before we start zapping keys in case of 
       ;; key swaps/collisions, i.e. (rename-keys {:a 1 :b 2} {:a :b :b :a})
@@ -1484,26 +1484,39 @@ for immutable maps."
 
 This implements clojure.set/rename, one of the so-called 'relation' functions.
 
-A relation (or 'rel') is a collection of maps that each have the same keys such as
-might be derived from clojure.java.jdbc queries. It can also be a single map whose
-matching mapentries are indexed.
-
 Returns a 'rel' of the maps in REL with the keys in KEYMAP renamed to the vals in KEYMAP.
 
-Mutable in, mutable out, if REL is mutable
-the resulting container will be a cl:list, not an immutable set.
+A relation (or 'rel') is a collection of maps that each have the same keys such as
+might be derived from clojure.java.jdbc queries.
 
-Mixing mutable and immutable collections is not recommended and will 
-likely lead to unexpected results, but it is only rejected
-if REL is immutable."
-  (when (coll? rel)
-    ;; May seem redundnt with coll? test above, but we want to check children in this case.
-    (require-immutable-rel rel))           ;hopefully temporary
-  (let ((renamed-maps 
-          (mmap (lambda (map) (rename-keys map keymap)) rel)))
-    (if (coll? rel)
-        (set renamed-maps)
-        renamed-maps)))
+With regard to mutable data structures as inputs:
+1) If the 'rel' container is a cl:list or cl:vector (i.e. mutable)
+   the maps may be mutable or immutable. The original container
+   may be updated and returned as well as the original mutable input hash-tables.
+   Mutable inputs mean that the result is not necessarily a set of distinct entities.
+2) If the 'rel' container is immutable, only immutable maps may be
+   specified in the rel, and the result will always be an immutable set.
+   (Consistent with Clojure)
+
+See also RENAME-KEYS which operates on a single map instead of a collection of maps."
+  (cond 
+    ((coll? rel)
+     ;; Immutable hash containers require immutable children until we can support EQUAL? on their
+     ;; content.
+     (require-immutable-rel rel)
+     (set (mmap (lambda (map) (rename-keys map keymap)) rel)))
+    ((cl:listp rel)
+     (loop for cons on rel
+           do (setf (car cons)
+                    (rename-keys (car cons) keymap)))
+     rel)
+    ((cl:vectorp rel)
+     (loop for elt across rel
+           for index from 0
+           do (setf (aref rel index)
+                    (rename-keys elt keymap)))
+     rel)
+    (t (error "Unsupported container type for 'rel': ~s" (type-of rel)))))
 
 (defun split-at (n coll)
   "([n coll])

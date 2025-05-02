@@ -566,7 +566,17 @@ CLOS instance equivalence has not been separately tested yet.~%")
                  for i from 1
                  as val = (funcall iter)
                  until (eq val 'eof)
-                 finally (is (= i 4)))))
+                 finally (is (= i 4))))
+  ;; Hash table iterator should provide cl:list valued mapentries
+  ;; Map iterator should provide fset:seq valued mapentries
+  (let* ((iter (clj-coll::iterator (cl-hash-map :a 1) nil))
+         (map-entry (funcall iter)))
+    (is (equal '(:a 1) map-entry)))
+  (let* ((iter (clj-coll::iterator (hash-map :a 1) nil))
+         (map-entry (funcall iter)))
+    (is (vector? map-entry))            ;a persistent vector
+    (is (equal? [:a 1] map-entry))))
+
 (test mapf
   (flet ((doit (coll) 
            (let (result)
@@ -3787,17 +3797,55 @@ as the 'result' in xform steps")
   (is (equalp (cl-hash-map :b 1 :a 2) (rename-keys (cl-hash-map :a 1 :b 2)  (cl-hash-map :a :b :b :a)))))
 
 (test rename
-  (is (equal? #{{:aa 1 :bb 2} {:aa 11 :bb 22}} (rename #{{:a 1 :b 2} {:a 11 :b 22}} {:a :aa :b :bb})))
-  (let ((*default-hashmap-constructor* 'cl-hash-map))
-    ;; Not a set result because input is mutable
-    (is (= 2 (count (intersection (cl:list {:aa 1 :bb 2} {:aa 11 :bb 22}) 
-                                  (rename (cl-vector {:a 1 :b 2} {:a 11 :b 22}) {:a :aa :b :bb})))))
-    ;; Garbage from mixed mutable/immutable maps/set combinations, until we straighten out EQUAL?.
-    (let ((r (rename (cl:list (hash-map :a 1 :b 2) (hash-map :a 11 :b 22)) {:a :aa :b :bb})))
-      (is (not (coll? r)))
-      (is (coll? (first r))))
-    ;; Disallowed (remember, syntax maps here are mutable in this sexp)
-    (signals error (rename #{{:a 1 :b 2} {:a 11 :b 22}} {:a :aa :b :bb}))))
+  ;; Single maps not permitted
+  (signals error (rename {:a 1 :b 2} {:a :aa}))
+  (signals error (rename (cl-hash-map :a 1 :b 2) {:a :aa}))
+
+  ;; Normal immutable container and maps
+  (let ((r (rename #{{:a 1 :b 2} {:a 11 :b 22}} {:a :aa :b :bb})))
+    (is (equal? #{{:aa 1 :bb 2} {:aa 11 :bb 22}} r))
+    (is (set? r))
+    (is (every? #'map? r)))
+  ;; Mutable maps, mutable container
+  (let* ((*default-hashmap-constructor* 'cl-hash-map)
+         (hm1-1 {:a 1 :b 2})
+         (hm1-2 {:a 11 :b 22})
+         (v (cl-vector hm1-1 hm1-2))
+         (r (rename v {:a :aa :b :bb}))
+         (hm2-1 {:a 1 :b 2})
+         (hm2-2 {:a 11 :b 22})
+         (l (cl:list hm2-1 hm2-2))
+         (r2 (rename l {:a :aa :b :bb})))
+    (is (eq v r))
+    (is (eq (first v) hm1-1))
+    (is (eq (second v) hm1-2))
+    (is (= 1 (get (first v) :aa)))
+    (is (= 2 (count (intersection (cl:list {:aa 1 :bb 2} {:aa 11 :bb 22}) (coerce r 'cl:list)))))
+    (is (eq l r2))
+    (is (eq (first l) hm2-1))
+    (is (eq (second l) hm2-2))
+    (is (= 2 (count (intersection (cl:list {:aa 1 :bb 2} {:aa 11 :bb 22}) r2)))))
+  ;; Immutable maps, mutable container
+  (let* ((hm1-1 {:a 1 :b 2})
+         (hm1-2 {:a 11 :b 22})
+         (v (cl-vector hm1-1 hm1-2))
+         (r (rename v {:a :aa :b :bb}))
+         (hm2-1 {:a 1 :b 2})
+         (hm2-2 {:a 11 :b 22})
+         (l (cl:list hm2-1 hm2-2))
+         (r2 (rename l {:a :aa :b :bb})))
+    (is (eq v r))
+    (is (not (eq (first v) hm1-1)))
+    (is (not (eq (second v) hm1-2)))
+    (is (= 1 (get (first v) :aa)))
+    (is (= 2 (count (intersection (cl:list {:aa 1 :bb 2} {:aa 11 :bb 22}) (coerce r 'cl:list)))))
+    (is (eq l r2))
+    (is (not (eq (first l) hm2-1)))
+    (is (not (eq (second l) hm2-2)))
+    (is (= 2 (count (intersection (cl:list {:aa 1 :bb 2} {:aa 11 :bb 22}) r2)))))
+
+  ;; Mutable maps on immutable container are rejected
+  (signals error (rename [{:a 1 :b 2} (cl-hash-map :a 1 :c 3)] {:a :aa})))
 
 (test map-invert
   (is (equal? {1 :a 2 :b} (map-invert {:a 1 :b 2})))

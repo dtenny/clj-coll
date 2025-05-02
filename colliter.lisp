@@ -282,7 +282,7 @@ Returns COLLECTOR."
             (when (eq keys val)
               (error "Hashtable has mutated and key is no longer present for iterator: ~s" key))
             (incf index)
-            (list key val))
+            (cl:list key val))
           eof))))
 (defun fset-map-iterator (coll eof) 
   "Iterator fn for FSET:MAP collections, returns MapEntrys as persistent vectors of two elements."
